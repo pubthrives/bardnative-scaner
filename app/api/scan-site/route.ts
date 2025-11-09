@@ -7,8 +7,8 @@ import https from "https";
 
 /* ---------------- CONFIG ---------------- */
 const FETCH_TIMEOUT = 20000;
-const MAX_PAGES = 500; // Increased from 400
-const ANALYZE_LIMIT = Infinity; // No limit
+const MAX_PAGES = 500;
+const ANALYZE_LIMIT = Infinity;
 const REQUIRED_PAGES = ["about", "contact", "privacy", "terms", "disclaimer"];
 
 const OPENAI_KEY: string | undefined = process.env.OPENAI_API_KEY;
@@ -76,9 +76,9 @@ function isLikelyPostUrl(url: string): boolean {
     return false;
 
   // ✅ posts often contain words or years and multiple slashes
-  if (segments.length >= 2) return true; // Reduced from 3 to 2
+  if (segments.length >= 2) return true;
   if (/\b(20\d{2}|19\d{2})\b/.test(u)) return true;
-  if (segments.some((s) => /^[a-z0-9-]+$/.test(s) && s.length > 4)) return true; // Reduced from 6 to 4
+  if (segments.some((s) => /^[a-z0-9-]+$/.test(s) && s.length > 4)) return true;
 
   return false;
 }
@@ -120,7 +120,7 @@ function isSafeContent(text: string): boolean {
 }
 
 // ✅ Enhanced AI analysis with strict violation detection
-async function analyzeTextWithAI(text: string) {
+async function analyzeTextWithAI(text: string, url: string = "") {
   if (!openai) return { violations: [], summary: "API key missing", suggestions: [] };
   
   // Pre-filter safe content
@@ -131,8 +131,8 @@ async function analyzeTextWithAI(text: string) {
   try {
     const res = await openai.chat.completions.create({
       model: "gpt-4o-mini",
-      temperature: 0.1, // More consistent
-      max_tokens: 700,
+      temperature: 0.1,
+      max_tokens: 800,
       messages: [
         {
           role: "system",
@@ -142,7 +142,7 @@ Return valid JSON:
 {
   "violations": [
     {
-      "type": "Adult|Gambling|Scam|Fake|Harmful|Hate",
+      "type": "Adult|Gambling|Scam|Fake|Harmful|Hate|Malware|Copyright|Misleading",
       "excerpt": "short quote",
       "confidence": 0.95
     }
@@ -158,19 +158,34 @@ Return valid JSON:
 - Return empty arrays if no clear violations
 
 🟢 FLAG ONLY IF:
-- Explicit sexual content
+- Explicit sexual content or nudity
 - Gambling/betting promotion
 - Scams/fraud schemes
 - Fake software/downloads
 - Harmful/deceptive practices
 - Hate speech or violence promotion
+- Malware/cracked software distribution
+- Copyright infringement (pirated content)
+- Misleading offers or false promises
+- Suspicious download buttons or links
+- Get-rich-quick schemes
+- Illegal activities promotion
+
+🔴 SPECIAL ATTENTION:
+- Download buttons for software, games, movies, music
+- Links to external file hosting sites
+- "Free download", "cracked", "torrent", "full version" phrases
+- Suspicious popups or redirects
+- Affiliate links for questionable products
 
 Example violations:
-❌ "This article discusses online casinos"
-✅ "Visit our casino site to win big money"
+❌ "Download free cracked software here"
+✅ "Learn about software development"
+❌ "Get rich quick with this method"
+✅ "Financial planning tips"
 `,
         },
-        { role: "user", content: text.slice(0, 16000) },
+        { role: "user", content: `URL: ${url}\n\nCONTENT:\n${text.slice(0, 16000)}` },
       ],
     });
 
@@ -191,6 +206,86 @@ Example violations:
   }
 }
 
+// ✅ Enhanced violation detection for suspicious elements
+function detectSuspiciousElements($: cheerio.CheerioAPI, url: string): any[] {
+  const violations: any[] = [];
+  
+  // Check for download buttons/links
+  const downloadSelectors = [
+    'a[href*="download"]',
+    'a[href*=".exe"]',
+    'a[href*=".apk"]',
+    'a[href*=".zip"]',
+    'a[href*=".rar"]',
+    'a[href*="torrent"]',
+    'a[href*="crack"]',
+    'button:contains("Download")',
+    'a:contains("Download")',
+    'a:contains("Free Download")',
+    'a:contains("Cracked")',
+    'a:contains("Full Version")',
+    '[onclick*="download"]'
+  ];
+  
+  downloadSelectors.forEach(selector => {
+    $(selector).each((_, el) => {
+      const element = $(el);
+      const text = element.text().toLowerCase();
+      const href = element.attr('href') || '';
+      
+      if (text.includes('download') || text.includes('crack') || 
+          text.includes('torrent') || href.includes('download')) {
+        violations.push({
+          type: "Malware",
+          excerpt: `Suspicious download element: ${text} (${href})`,
+          confidence: 0.95
+        });
+      }
+    });
+  });
+  
+  // Check for suspicious phrases in content
+  const suspiciousPhrases = [
+    "cracked software",
+    "free download full",
+    "torrent download",
+    "get rich quick",
+    "make money fast",
+    "win money online",
+    "miracle cure",
+    "hack tool",
+    "keygen",
+    "serial number",
+    "activation key"
+  ];
+  
+  const pageText = $('body').text().toLowerCase();
+  suspiciousPhrases.forEach(phrase => {
+    if (pageText.includes(phrase)) {
+      violations.push({
+        type: "Malware",
+        excerpt: `Suspicious phrase found: "${phrase}"`,
+        confidence: 0.9
+      });
+    }
+  });
+  
+  // Check for popups or suspicious scripts
+  $('script').each((_, el) => {
+    const scriptContent = $(el).html() || '';
+    if (scriptContent.includes('popup') && 
+        (scriptContent.includes('download') || scriptContent.includes('redirect'))) {
+      violations.push({
+        type: "Malware",
+        excerpt: "Suspicious popup script detected",
+        confidence: 0.85
+      });
+    }
+  });
+  
+  return violations;
+}
+
 /* ------------- MAIN HANDLER ------------- */
 export async function POST(req: Request) {
   try {
@@ -207,7 +302,7 @@ export async function POST(req: Request) {
 
     // Crawl more to gather potential posts
     let crawled = new Set(allLinks);
-    const crawlPromises = allLinks.slice(0, 15).map(async (link) => { // Increased from 10 to 15
+    const crawlPromises = allLinks.slice(0, 20).map(async (link) => { // Increased to 20
       if (crawled.size > MAX_PAGES) return;
       const html = await fetchHTML(link);
       if (!html) return;
@@ -221,7 +316,7 @@ export async function POST(req: Request) {
     const posts = Array.from(crawled).filter(isLikelyPostUrl);
     const uniquePosts = Array.from(new Set(posts));
     const totalPosts = uniquePosts.length;
-    const postsToScan = uniquePosts; // Analyze ALL posts
+    const postsToScan = uniquePosts;
 
     console.log(`📰 Found ${totalPosts} post-like URLs — analyzing ${postsToScan.length}`);
 
@@ -243,11 +338,17 @@ META: ${metaDesc}
 CONTENT: ${bodyText}
 `.slice(0, 16000);
     
-    const homepageAI = await analyzeTextWithAI(homepageContext);
+    const homepageAI = await analyzeTextWithAI(homepageContext, url);
+    
+    // Detect suspicious elements on homepage
+    const homepageSuspicious = detectSuspiciousElements($, url);
+    if (homepageSuspicious.length > 0) {
+      homepageAI.violations = [...homepageAI.violations, ...homepageSuspicious];
+    }
 
     // Analyze ALL posts concurrently
     const pagesWithViolations: any[] = [];
-    const concurrency = 10; // Increased from 8
+    const concurrency = 12; // Increased concurrency
 
     const batch = async (arr: string[], size: number) => {
       for (let i = 0; i < arr.length; i += size) {
@@ -261,7 +362,7 @@ CONTENT: ${bodyText}
             const title = $("title").text().trim();
             const h1 = $("h1").first().text().trim();
             const metaDesc = $("meta[name='description']").attr("content") || "";
-            const bodyText = $("main, article, .post-content, .entry-content, .content")
+            const bodyText = $("main, article, .post-content, .entry-content, .content, .post-body")
               .text()
               .replace(/\s+/g, " ")
               .trim();
@@ -274,7 +375,14 @@ CONTENT: ${bodyText}
 `.slice(0, 16000);
 
             if (fullContext.length < 200) return;
-            const ai = await analyzeTextWithAI(fullContext);
+            const ai = await analyzeTextWithAI(fullContext, p);
+            
+            // Detect suspicious elements on each post
+            const suspiciousElements = detectSuspiciousElements($, p);
+            if (suspiciousElements.length > 0) {
+              ai.violations = [...ai.violations, ...suspiciousElements];
+            }
+            
             if (ai.violations?.length > 0) {
               pagesWithViolations.push({ url: p, ...ai });
             }
@@ -291,10 +399,10 @@ CONTENT: ${bodyText}
 
     /* ---------- Scoring ---------- */
     let score = 100;
-    score -= totalViolations * 10;
+    score -= totalViolations * 12; // Increased penalty
     score -= missing.length * 5;
     if (totalPosts < 40) score -= 10;
-    if (totalPosts < 20) score -= 10;
+    if (totalPosts < 20) score -= 15; // Increased penalty
     if (!hasMetaTags) score -= 5;
     if (!hasGoodHeaders) score -= 5;
     score = Math.max(0, Math.min(100, Math.round(score)));
@@ -327,7 +435,7 @@ CONTENT: ${bodyText}
         ].filter(Boolean) as string[],
       },
       pagesWithViolations,
-      aiSuggestions: aiSuggestions.slice(0, 10),
+      aiSuggestions: aiSuggestions.slice(0, 15), // Increased suggestion limit
       score,
       summary,
       scannedAt: new Date().toISOString(),

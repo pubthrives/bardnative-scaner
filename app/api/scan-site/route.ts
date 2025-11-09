@@ -8,7 +8,7 @@ import https from "https";
 /* ---------------- CONFIG ---------------- */
 const FETCH_TIMEOUT = 20000;
 const MAX_PAGES = 400;
-const ANALYZE_LIMIT = 40;
+const ANALYZE_LIMIT = Infinity;
 const REQUIRED_PAGES = ["about", "contact", "privacy", "terms", "disclaimer"];
 
 const OPENAI_KEY: string | undefined = process.env.OPENAI_API_KEY;
@@ -218,7 +218,7 @@ export async function POST(req: Request) {
     const posts = Array.from(crawled).filter(isLikelyPostUrl);
     const uniquePosts = Array.from(new Set(posts));
     const totalPosts = uniquePosts.length;
-    const postsToScan = uniquePosts.slice(0, ANALYZE_LIMIT);
+    const postsToScan = uniquePosts;
 
     console.log(`📰 Found ${totalPosts} post-like URLs — analyzing ${postsToScan.length}`);
 

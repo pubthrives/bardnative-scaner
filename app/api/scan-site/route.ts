@@ -7,8 +7,8 @@ import https from "https";
 
 /* ---------------- CONFIG ---------------- */
 const FETCH_TIMEOUT = 20000;
-const MAX_PAGES = 400;
-const ANALYZE_LIMIT = Infinity;
+const MAX_PAGES = 500; // Increased from 400
+const ANALYZE_LIMIT = Infinity; // No limit
 const REQUIRED_PAGES = ["about", "contact", "privacy", "terms", "disclaimer"];
 
 const OPENAI_KEY: string | undefined = process.env.OPENAI_API_KEY;
@@ -76,9 +76,9 @@ function isLikelyPostUrl(url: string): boolean {
     return false;
 
   // ✅ posts often contain words or years and multiple slashes
-  if (segments.length >= 3) return true;
+  if (segments.length >= 2) return true; // Reduced from 3 to 2
   if (/\b(20\d{2}|19\d{2})\b/.test(u)) return true;
-  if (segments.some((s) => /^[a-z0-9-]+$/.test(s) && s.length > 6)) return true;
+  if (segments.some((s) => /^[a-z0-9-]+$/.test(s) && s.length > 4)) return true; // Reduced from 6 to 4
 
   return false;
 }
@@ -207,18 +207,21 @@ export async function POST(req: Request) {
 
     // Crawl more to gather potential posts
     let crawled = new Set(allLinks);
-    for (const link of allLinks.slice(0, 10)) {
-      if (crawled.size > MAX_PAGES) break;
+    const crawlPromises = allLinks.slice(0, 15).map(async (link) => { // Increased from 10 to 15
+      if (crawled.size > MAX_PAGES) return;
       const html = await fetchHTML(link);
-      if (!html) continue;
+      if (!html) return;
       extractLinks(html, url).forEach((l) => crawled.add(l));
-    }
+    });
+
+    // Wait for all crawling to complete
+    await Promise.all(crawlPromises);
 
     // ✅ Filter for likely post URLs only
     const posts = Array.from(crawled).filter(isLikelyPostUrl);
     const uniquePosts = Array.from(new Set(posts));
     const totalPosts = uniquePosts.length;
-    const postsToScan = uniquePosts;
+    const postsToScan = uniquePosts; // Analyze ALL posts
 
     console.log(`📰 Found ${totalPosts} post-like URLs — analyzing ${postsToScan.length}`);
 
@@ -242,9 +245,9 @@ CONTENT: ${bodyText}
     
     const homepageAI = await analyzeTextWithAI(homepageContext);
 
-    // Analyze posts concurrently
+    // Analyze ALL posts concurrently
     const pagesWithViolations: any[] = [];
-    const concurrency = 8;
+    const concurrency = 10; // Increased from 8
 
     const batch = async (arr: string[], size: number) => {
       for (let i = 0; i < arr.length; i += size) {
@@ -258,7 +261,7 @@ CONTENT: ${bodyText}
             const title = $("title").text().trim();
             const h1 = $("h1").first().text().trim();
             const metaDesc = $("meta[name='description']").attr("content") || "";
-            const bodyText = $("main, article, .post-content, .entry-content")
+            const bodyText = $("main, article, .post-content, .entry-content, .content")
               .text()
               .replace(/\s+/g, " ")
               .trim();

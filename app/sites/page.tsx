@@ -6,6 +6,7 @@ import axios from "axios";
 import toast, { Toaster } from "react-hot-toast";
 import { motion, AnimatePresence } from "framer-motion";
 import { Globe, Loader2, Shield } from "lucide-react";
+import { useRouter } from "next/navigation";
 
 const LOCAL_KEY = "guardian_violations";
 
@@ -20,6 +21,7 @@ function saveViolationsToStorage(newResults: any[]) {
 }
 
 export default function SitesPage() {
+    const router = useRouter();
     const [mode, setMode] = useState("single");
     const [singleUrl, setSingleUrl] = useState("");
     const [multiUrls, setMultiUrls] = useState("");
@@ -68,6 +70,11 @@ export default function SitesPage() {
             setProgress(100);
             setStatus("Scan complete");
             toast.success(`Scan complete for ${singleUrl}`, { id: "scan" });
+            
+            // Redirect to violations page after successful scan
+            setTimeout(() => {
+                router.push("/violations");
+            }, 1500);
         } catch (err: any) {
             console.error("❌ Scan failed:", err?.response?.data || err?.message || err);
             toast.error(
@@ -120,6 +127,11 @@ export default function SitesPage() {
         setProgress(0);
         setStatus("Batch scan complete");
         setMultiUrls("");
+        
+        // Redirect to violations page after successful batch scan
+        setTimeout(() => {
+            router.push("/violations");
+        }, 1500);
     }
 
     return (

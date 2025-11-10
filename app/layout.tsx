@@ -63,8 +63,8 @@ export default function RootLayout({ children }: { children: ReactNode }) {
               <NavItem href="/">Overview</NavItem>
               <NavItem href="/sites">Sites</NavItem>
               <NavItem href="/violations">Violations</NavItem>
-              <NavItem href="/settings">Settings</NavItem>
               <NavItem href="/grant-access">Grant Access</NavItem>
+              <NavItem href="/settings">Settings</NavItem>
             </div>
           </nav>
 

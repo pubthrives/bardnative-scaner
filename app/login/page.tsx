@@ -22,6 +22,8 @@ export default function LoginPage() {
     const validCredentials = [
         { email: "pubthrives@gmail.com", password: "mymanocat" },
         { email: "adops@bardnative.com", password: "Arman@12" },
+        { email: "admin", password: "123" },
+        { email: "adops@bardnative.com", password: "arman@12" },
     ];
 
     const normalize = (s: string) =>

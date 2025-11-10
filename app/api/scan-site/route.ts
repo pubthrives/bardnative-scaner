@@ -1,4 +1,6 @@
 // app/api/scan-site/route.ts
+export const runtime = "nodejs";        // force Node.js serverless runtime
+export const dynamic = "force-dynamic"; // prevent static optimization
 import axios from "axios";
 import * as cheerio from "cheerio";
 import OpenAI from "openai";
@@ -17,23 +19,36 @@ const openai = OPENAI_KEY ? new OpenAI({ apiKey: OPENAI_KEY }) : null;
 /* ---------------- HELPERS ---------------- */
 async function fetchHTML(url: string): Promise<string> {
   console.log(`🌐 Fetching: ${url}`);
+
+  // 30s timeout via AbortController
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 30000);
+
   try {
-    const res = await axios.get(url, {
-      timeout: FETCH_TIMEOUT,
+    const res = await fetch(url, {
+      method: "GET",
+      // strong browser-like headers improve success rate behind CDNs/WAF
       headers: {
         "User-Agent":
-          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36",
         Accept:
           "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
+        "Accept-Language": "en-US,en;q=0.9",
+        "Cache-Control": "no-cache",
+        Pragma: "no-cache",
       },
-      httpsAgent: new https.Agent({ rejectUnauthorized: false }),
-      maxRedirects: 5,
+      redirect: "follow",
+      signal: controller.signal,
     });
-    console.log(`✅ Fetched: ${url} (${res.data.length} chars)`);
-    return res.data;
+
+    const text = await res.text();
+    console.log(`✅ Fetched: ${url} (status ${res.status}, ${text.length} chars)`);
+    return text;
   } catch (err: any) {
-    console.warn(`⚠️ Failed to fetch: ${url} — ${err?.message}`);
+    console.warn(`⚠️ Failed to fetch: ${url} — ${err?.name || ""} ${err?.message || err}`);
     return "";
+  } finally {
+    clearTimeout(timeout);
   }
 }
 

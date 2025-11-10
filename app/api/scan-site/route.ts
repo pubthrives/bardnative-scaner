@@ -354,6 +354,22 @@ export async function POST(req: Request) {
   
   try {
     const { url } = await req.json();
+    // Prevent scanning the same origin as the API (recursion/loop/blocked fetch)
+try {
+  const targetHost = new URL(url).host;
+  const apiHost = new URL(req.url).host; // current deployment host
+  if (targetHost === apiHost) {
+    return NextResponse.json(
+      {
+        error:
+          "Refusing to scan the same domain this API is hosted on (to avoid recursion). Try scanning an external site domain.",
+      },
+      { status: 400 }
+    );
+  }
+} catch {
+  // ignore URL parse errors; fetchHTML will handle
+}
     console.log(`🎯 Target URL: ${url}`);
     
     if (!url) {

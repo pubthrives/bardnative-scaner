@@ -266,11 +266,11 @@ Example violations:
   }
 }
 
-// ✅ STRICT violation detection for CLEAR violations only
-function detectClearViolations($: cheerio.CheerioAPI, url: string): any[] {
+  
+function detectClearViolations($: cheerio.Root, url: string): any[] {
   console.log(`🔎 Checking for CLEAR violations on: ${url}`);
   const violations: any[] = [];
-  
+
   // ONLY check for CLEAR, OBVIOUS violations
   const clearViolationPhrases = [
     "cracked software",
@@ -281,51 +281,56 @@ function detectClearViolations($: cheerio.CheerioAPI, url: string): any[] {
     "hack tool",
     "keygen",
     "serial number crack",
-    "activation key crack"
+    "activation key crack",
   ];
-  
-  const pageText = $('body').text().toLowerCase();
-  clearViolationPhrases.forEach(phrase => {
+
+  const pageText = $("body").text().toLowerCase();
+
+  clearViolationPhrases.forEach((phrase) => {
     if (pageText.includes(phrase)) {
       violations.push({
         type: "Copyright",
         excerpt: `Clear violation phrase found: "${phrase}"`,
-        confidence: 0.95
+        confidence: 0.95,
       });
       console.log(`🚨 Clear violation found: ${phrase}`);
     }
   });
-  
+
   // Check for explicit download links to ILLEGAL content
   const illegalDownloadSelectors = [
     'a[href*="crack"]',
     'a[href*="torrent"]',
     'a:contains("Cracked")',
-    'a:contains("Torrent")'
+    'a:contains("Torrent")',
   ];
-  
-  illegalDownloadSelectors.forEach(selector => {
+
+  illegalDownloadSelectors.forEach((selector) => {
     $(selector).each((_, el) => {
       const element = $(el);
       const text = element.text().toLowerCase();
-      const href = element.attr('href') || '';
-      
-      // Only flag if it's clearly illegal content
-      if ((text.includes('crack') || text.includes('torrent')) && 
-          (text.includes('software') || text.includes('game') || text.includes('movie'))) {
+      const href = element.attr("href") || "";
+
+      if (
+        (text.includes("crack") || text.includes("torrent")) &&
+        (text.includes("software") ||
+          text.includes("game") ||
+          text.includes("movie"))
+      ) {
         violations.push({
           type: "Copyright",
           excerpt: `Illegal download link: ${text} (${href})`,
-          confidence: 0.9
+          confidence: 0.9,
         });
         console.log(`🚨 Illegal download link found: ${text}`);
       }
     });
   });
-  
+
   console.log(`🔎 Clear violations check complete. Found: ${violations.length}`);
-  return violations;
+  return violations; // ✅ this is now inside the function
 }
+    
 
 /* ------------- MAIN HANDLER ------------- */
 export async function POST(req: Request) {
